@@ -20,8 +20,13 @@ if DATABASE_URL:
     elif DATABASE_URL.startswith("postgresql://"):
         DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
     
+    # asyncpg does not support 'sslmode', swap it with 'ssl'
+    if "sslmode=" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("sslmode=", "ssl=")
+    
     logging.info(f"Using PostgreSQL database")
     engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+
 else:
     DATABASE_URL = "sqlite+aiosqlite:///./database/bot.db"
     logging.info("Using local SQLite database")
