@@ -153,6 +153,7 @@ async def command_start_handler(message: Message) -> None:
         "<b>Commands:</b>\n"
         "🔍 /search - Find a coin\n"
         "🔥 /trending - View trending coins\n"
+        "🧠 /fng - View Fear & Greed Index\n"
         "🔔 /alerts - Set price alerts\n"
         "❓ /help - See all commands"
     )
@@ -162,10 +163,12 @@ async def set_commands(bot: Bot):
         BotCommand(command="start", description="Start the bot"),
         BotCommand(command="search", description="Search for a coin"),
         BotCommand(command="trending", description="View trending DEX coins"),
+        BotCommand(command="fng", description="View Fear & Greed Index"),
         BotCommand(command="alerts", description="Manage alerts"),
         BotCommand(command="help", description="Show help")
     ]
     await bot.set_my_commands(commands)
+
 
 
 async def main() -> None:

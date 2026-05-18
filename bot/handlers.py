@@ -90,6 +90,64 @@ async def trending_coins_handler(message: Message):
         logging.error(f"Trending error: {e}")
         await msg.edit_text("❌ An error occurred while fetching trending tokens.")
 
+@router.message(Command("fng"))
+@router.message(Command("fearandgreed"))
+async def fear_and_greed_handler(message: Message):
+    msg = await message.answer("🧠 <b>Fetching latest Fear & Greed Index...</b>")
+    
+    url = "https://api.alternative.me/fng/"
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=10)
+        ) as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    data_list = result.get("data", [])
+                    if not data_list:
+                        await msg.edit_text("❌ No data available. Please try again later.")
+                        return
+                        
+                    item = data_list[0]
+                    value = int(item.get("value", 50))
+                    classification = item.get("value_classification", "Neutral")
+                    
+                    filled_count = max(0, min(10, round(value / 10)))
+                    empty_count = 10 - filled_count
+                    
+                    if value <= 25:
+                        color_emoji = "🟥"
+                        advice = "Market is in <b>Extreme Fear</b>. This can be a buying opportunity for long-term investors! 📉🛒"
+                    elif value <= 45:
+                        color_emoji = "🟧"
+                        advice = "Market is in <b>Fear</b>. Traders are cautious, and volume may be declining."
+                    elif value <= 55:
+                        color_emoji = "🟨"
+                        advice = "Market is <b>Neutral</b>. Sideways price action is common here. ⚖️"
+                    elif value <= 75:
+                        color_emoji = "🟩"
+                        advice = "Market is in <b>Greed</b>. People are buying, but watch out for localized corrections! 📈⚠️"
+                    else:
+                        color_emoji = "💎"
+                        advice = "Market is in <b>Extreme Greed</b>! The hype is high, watch out for sudden dumps (FOMO warning)! 🚨🌋"
+                        
+                    bar = color_emoji * filled_count + "⬜" * empty_count
+                    
+                    text = (
+                        "🧠 <b>Crypto Fear & Greed Index</b> 🧠\n\n"
+                        f"📊 Sentiment: <b>{classification}</b>\n"
+                        f"📈 Score: <b>{value}/100</b>\n"
+                        f"<code>{bar}</code>\n\n"
+                        f"💡 <b>Market Insight:</b>\n{advice}"
+                    )
+                    await msg.edit_text(text)
+                else:
+                    await msg.edit_text("❌ Failed to contact the Fear & Greed API.")
+    except Exception as e:
+        logging.error(f"F&G error: {e}")
+        await msg.edit_text("❌ An error occurred while fetching Fear & Greed data.")
+
 @router.callback_query(F.data.startswith("a:"))
 async def process_alert_callback(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -175,6 +233,7 @@ async def help_handler(message: Message):
         "/search &lt;coin&gt; - Get live price\n"
         "/trending - View trending DexScreener coins\n"
         "/alerts - Manage your alerts\n"
+        "/fng - View market Fear & Greed Index\n"
         "/help - Show this help\n\n"
         "💡 <b>Tip:</b> You can also just type <code>price btc</code> in any chat!"
     )
