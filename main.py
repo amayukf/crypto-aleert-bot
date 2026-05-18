@@ -80,9 +80,49 @@ async def set_webhook_handler(request: Request):
         logging.error(f"Error setting webhook: {e}")
         return {"status": "error", "message": str(e)}
 
+@app.get("/api/diagnose")
+async def diagnose_handler():
+    diagnostics = {}
+    
+    # 1. Check Bot Token
+    if not TOKEN:
+        diagnostics["bot_token"] = "Missing BOT_TOKEN environment variable!"
+    else:
+        hidden_token = TOKEN[:6] + "..." + TOKEN[-6:] if len(TOKEN) > 12 else "Too Short"
+        diagnostics["bot_token"] = f"Configured ({hidden_token})"
+        try:
+            bot_info = await bot.get_me()
+            diagnostics["telegram_api"] = f"Connected successfully as @{bot_info.username}"
+        except Exception as e:
+            diagnostics["telegram_api"] = f"Failed to connect to Telegram: {e}"
+    
+    # 2. Check Database Connection
+    db_url = getenv("DATABASE_URL")
+    if not db_url:
+        diagnostics["database_type"] = "SQLite (Fallback) - WARNING: SQLite will fail on Vercel's read-only filesystem!"
+    else:
+        diagnostics["database_type"] = "PostgreSQL (Neon/Supabase)"
+        
+    try:
+        from sqlalchemy.future import select
+        from sqlalchemy import text
+        from database.db import AsyncSessionLocal
+        
+        await init_db()
+        diagnostics["database_init"] = "Success (tables created/verified)"
+        
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        diagnostics["database_query"] = "Success (connection is active)"
+    except Exception as e:
+        diagnostics["database_query"] = f"Failed: {e}"
+        
+    return diagnostics
+
 @app.get("/")
 async def root_handler():
     return {"status": "alive", "service": "Crypto Alert Bot Webhook"}
+
 
 
 # --- Local Web Server for non-Serverless runs ---
