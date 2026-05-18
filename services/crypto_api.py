@@ -64,3 +64,60 @@ class CryptoAPI:
             f"📊 Vol: <code>{vol_str}</code>\n\n"
             f"<a href='{pair_data.get('url', '')}'>View on DexScreener</a>"
         )
+
+    @classmethod
+    async def get_trending_coins(cls):
+        url_boosts = "https://api.dexscreener.com/token-boosts/latest/v1"
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=15)
+            ) as session:
+                async with session.get(url_boosts) as response:
+                    if response.status == 200:
+                        boosts = await response.json()
+                        if not isinstance(boosts, list):
+                            return []
+                        
+                        unique_tokens = []
+                        seen_addresses = set()
+                        for b in boosts:
+                            address = b.get("tokenAddress")
+                            if address and address not in seen_addresses:
+                                seen_addresses.add(address)
+                                unique_tokens.append(b)
+                                if len(unique_tokens) >= 5:
+                                    break
+                                    
+                        tasks = []
+                        for t in unique_tokens:
+                            addr = t.get("tokenAddress")
+                            chain = t.get("chainId", "solana")
+                            tasks.append(cls.fetch_token_pairs(session, chain, addr))
+                            
+                        results = await asyncio.gather(*tasks)
+                        return [r for r in results if r]
+                    else:
+                        logging.error(f"DexScreener boosts API error: {response.status}")
+                        return []
+        except Exception as e:
+            logging.error(f"Failed to fetch trending coins: {e}")
+            return []
+
+    @classmethod
+    async def fetch_token_pairs(cls, session: aiohttp.ClientSession, chain_id: str, token_address: str):
+        url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    pairs = data.get("pairs", [])
+                    if pairs:
+                        for p in pairs:
+                            if p.get("chainId") == chain_id:
+                                return p
+                        return pairs[0]
+                return None
+        except Exception as e:
+            logging.error(f"Error fetching token pair {token_address}: {e}")
+            return None
+

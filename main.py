@@ -152,6 +152,7 @@ async def command_start_handler(message: Message) -> None:
         "I can help you track real-time prices for any coin on decentralized exchanges.\n\n"
         "<b>Commands:</b>\n"
         "🔍 /search - Find a coin\n"
+        "🔥 /trending - View trending coins\n"
         "🔔 /alerts - Set price alerts\n"
         "❓ /help - See all commands"
     )
@@ -160,10 +161,12 @@ async def set_commands(bot: Bot):
     commands = [
         BotCommand(command="start", description="Start the bot"),
         BotCommand(command="search", description="Search for a coin"),
+        BotCommand(command="trending", description="View trending DEX coins"),
         BotCommand(command="alerts", description="Manage alerts"),
         BotCommand(command="help", description="Show help")
     ]
     await bot.set_my_commands(commands)
+
 
 async def main() -> None:
     if not TOKEN:

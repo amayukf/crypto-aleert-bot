@@ -50,6 +50,46 @@ async def search_coin_handler(message: Message):
     else:
         await msg.edit_text(f"❌ Could not find any data for <b>{query}</b>.")
 
+@router.message(Command("trending"))
+async def trending_coins_handler(message: Message):
+    msg = await message.answer("🔥 <b>Fetching live trending tokens from DexScreener...</b>")
+    
+    try:
+        trending_pairs = await CryptoAPI.get_trending_coins()
+        if not trending_pairs:
+            await msg.edit_text("❌ No trending tokens found at the moment. Please try again later.")
+            return
+            
+        lines = ["🔥 <b>Trending DexScreener Boosts</b> 🔥\n"]
+        for i, pair in enumerate(trending_pairs, 1):
+            base_token = pair.get("baseToken", {})
+            name = base_token.get("name", "Unknown")
+            symbol = base_token.get("symbol", "Unknown")
+            price_usd = pair.get("priceUsd", "N/A")
+            change_24h = pair.get("priceChange", {}).get("h24", 0)
+            chain = pair.get("chainId", "N/A").capitalize()
+            addr = base_token.get("address", "")
+            
+            try:
+                change_val = float(change_24h) if change_24h else 0
+            except (ValueError, TypeError):
+                change_val = 0
+            emoji = "📈" if change_val >= 0 else "📉"
+            
+            line = (
+                f"{i}. <b>{name} ({symbol})</b> on <b>{chain}</b>\n"
+                f"   💰 Price: <code>${price_usd}</code>\n"
+                f"   {emoji} 24h: <code>{change_24h}%</code>\n"
+                f"   📝 CA: <code>{addr}</code>\n"
+                f"   📊 <a href='{pair.get('url', '')}'>View Chart</a>\n"
+            )
+            lines.append(line)
+            
+        await msg.edit_text("\n".join(lines), disable_web_page_preview=True)
+    except Exception as e:
+        logging.error(f"Trending error: {e}")
+        await msg.edit_text("❌ An error occurred while fetching trending tokens.")
+
 @router.callback_query(F.data.startswith("a:"))
 async def process_alert_callback(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -133,11 +173,13 @@ async def help_handler(message: Message):
         "<b>Available Commands:</b>\n"
         "/start - Start the bot\n"
         "/search &lt;coin&gt; - Get live price\n"
+        "/trending - View trending DexScreener coins\n"
         "/alerts - Manage your alerts\n"
         "/help - Show this help\n\n"
         "💡 <b>Tip:</b> You can also just type <code>price btc</code> in any chat!"
     )
     await message.answer(help_text)
+
 
 @router.message(F.text)
 async def flexible_price_handler(message: Message):
