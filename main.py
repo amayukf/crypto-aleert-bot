@@ -7,12 +7,12 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
-from aiogram.types import Message, BotCommand
+from aiogram.types import Message, BotCommand, Update
 from dotenv import load_dotenv
 
 from bot.handlers import router as main_router
 from database.db import init_db, add_user
-from services.alerts import setup_scheduler
+from services.alerts import setup_scheduler, check_alerts
 from aiohttp import web
 
 # Configure logging FIRST so all modules can use it
@@ -23,10 +23,72 @@ load_dotenv()
 TOKEN = getenv("BOT_TOKEN")
 PORT = int(getenv("PORT", 8080))
 
+# Initialize Bot
+bot = None
+if TOKEN:
+    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
 dp = Dispatcher()
 dp.include_router(main_router)
 
-# --- Web Server for Render (keeps service alive) ---
+# --- FastAPI Setup for Vercel Serverless ---
+try:
+    from fastapi import FastAPI, Request, HTTPException
+    app = FastAPI(title="Crypto Alert Bot Serverless")
+except ImportError:
+    app = None
+
+if app is not None:
+    @app.post("/webhook")
+    async def webhook_handler(request: Request):
+        if not bot:
+            raise HTTPException(status_code=500, detail="Bot not initialized")
+        try:
+            payload = await request.json()
+            await init_db()
+            update = Update.model_validate(payload, context={"bot": bot})
+            await dp.feed_update(bot, update)
+            return {"status": "ok"}
+        except Exception as e:
+            logging.error(f"Error handling webhook: {e}")
+            return {"status": "error", "message": str(e)}
+
+    @app.get("/api/check-alerts")
+    async def cron_alerts_handler():
+        if not bot:
+            raise HTTPException(status_code=500, detail="Bot not initialized")
+        
+        try:
+            await init_db()
+            logging.info("Checking alerts via serverless cron endpoint...")
+            await check_alerts(bot)
+            return {"status": "ok", "message": "Alerts checked successfully"}
+        except Exception as e:
+            logging.error(f"Error during alert checks: {e}")
+            return {"status": "error", "message": str(e)}
+
+
+    @app.get("/api/set-webhook")
+    async def set_webhook_handler(request: Request):
+        if not bot:
+            raise HTTPException(status_code=500, detail="Bot not initialized")
+        
+        host = request.headers.get("host")
+        scheme = "https" if "vercel.app" in host or "localhost" not in host else "http"
+        webhook_url = f"{scheme}://{host}/webhook"
+        
+        try:
+            await bot.set_webhook(webhook_url)
+            return {"status": "ok", "message": f"Webhook successfully set to {webhook_url}"}
+        except Exception as e:
+            logging.error(f"Error setting webhook: {e}")
+            return {"status": "error", "message": str(e)}
+
+    @app.get("/")
+    async def root_handler():
+        return {"status": "alive", "service": "Crypto Alert Bot Webhook"}
+
+# --- Local Web Server for non-Serverless runs ---
 async def handle_ping(request):
     return web.Response(text="Bot is alive!")
 
@@ -34,15 +96,15 @@ async def handle_health(request):
     return web.Response(text="OK", status=200)
 
 async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    app.router.add_get("/health", handle_health)
-    runner = web.AppRunner(app)
+    app_http = web.Application()
+    app_http.router.add_get("/", handle_ping)
+    app_http.router.add_get("/health", handle_health)
+    runner = web.AppRunner(app_http)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
     logging.info(f"✅ Web server started on port {PORT}")
-# ---------------------------------------------------
+
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
@@ -79,20 +141,21 @@ async def main() -> None:
         logging.error(f"❌ Failed to initialize database: {e}")
         sys.exit(1)
     
-    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot_local = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     
     # Setup background alerts
-    setup_scheduler(bot)
+    setup_scheduler(bot_local)
     
-    # Start the web server FIRST (Render needs the port bound quickly)
+    # Start the local web server FIRST
     await start_web_server()
     
-    await set_commands(bot)
+    await set_commands(bot_local)
     logging.info("🤖 Bot is starting polling...")
-    await dp.start_polling(bot)
+    await dp.start_polling(bot_local)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logging.info("Bot stopped!")
+
