@@ -32,61 +32,58 @@ dp = Dispatcher()
 dp.include_router(main_router)
 
 # --- FastAPI Setup for Vercel Serverless ---
-try:
-    from fastapi import FastAPI, Request, HTTPException
-    app = FastAPI(title="Crypto Alert Bot Serverless")
-except ImportError:
-    app = None
+from fastapi import FastAPI, Request, HTTPException
 
-if app is not None:
-    @app.post("/webhook")
-    async def webhook_handler(request: Request):
-        if not bot:
-            raise HTTPException(status_code=500, detail="Bot not initialized")
-        try:
-            payload = await request.json()
-            await init_db()
-            update = Update.model_validate(payload, context={"bot": bot})
-            await dp.feed_update(bot, update)
-            return {"status": "ok"}
-        except Exception as e:
-            logging.error(f"Error handling webhook: {e}")
-            return {"status": "error", "message": str(e)}
+app = FastAPI(title="Crypto Alert Bot Serverless")
 
-    @app.get("/api/check-alerts")
-    async def cron_alerts_handler():
-        if not bot:
-            raise HTTPException(status_code=500, detail="Bot not initialized")
-        
-        try:
-            await init_db()
-            logging.info("Checking alerts via serverless cron endpoint...")
-            await check_alerts(bot)
-            return {"status": "ok", "message": "Alerts checked successfully"}
-        except Exception as e:
-            logging.error(f"Error during alert checks: {e}")
-            return {"status": "error", "message": str(e)}
+@app.post("/webhook")
+async def webhook_handler(request: Request):
+    if not bot:
+        raise HTTPException(status_code=500, detail="Bot not initialized")
+    try:
+        payload = await request.json()
+        await init_db()
+        update = Update.model_validate(payload, context={"bot": bot})
+        await dp.feed_update(bot, update)
+        return {"status": "ok"}
+    except Exception as e:
+        logging.error(f"Error handling webhook: {e}")
+        return {"status": "error", "message": str(e)}
 
+@app.get("/api/check-alerts")
+async def cron_alerts_handler():
+    if not bot:
+        raise HTTPException(status_code=500, detail="Bot not initialized")
+    
+    try:
+        await init_db()
+        logging.info("Checking alerts via serverless cron endpoint...")
+        await check_alerts(bot)
+        return {"status": "ok", "message": "Alerts checked successfully"}
+    except Exception as e:
+        logging.error(f"Error during alert checks: {e}")
+        return {"status": "error", "message": str(e)}
 
-    @app.get("/api/set-webhook")
-    async def set_webhook_handler(request: Request):
-        if not bot:
-            raise HTTPException(status_code=500, detail="Bot not initialized")
-        
-        host = request.headers.get("host")
-        scheme = "https" if "vercel.app" in host or "localhost" not in host else "http"
-        webhook_url = f"{scheme}://{host}/webhook"
-        
-        try:
-            await bot.set_webhook(webhook_url)
-            return {"status": "ok", "message": f"Webhook successfully set to {webhook_url}"}
-        except Exception as e:
-            logging.error(f"Error setting webhook: {e}")
-            return {"status": "error", "message": str(e)}
+@app.get("/api/set-webhook")
+async def set_webhook_handler(request: Request):
+    if not bot:
+        raise HTTPException(status_code=500, detail="Bot not initialized")
+    
+    host = request.headers.get("host")
+    scheme = "https" if "vercel.app" in host or "localhost" not in host else "http"
+    webhook_url = f"{scheme}://{host}/webhook"
+    
+    try:
+        await bot.set_webhook(webhook_url)
+        return {"status": "ok", "message": f"Webhook successfully set to {webhook_url}"}
+    except Exception as e:
+        logging.error(f"Error setting webhook: {e}")
+        return {"status": "error", "message": str(e)}
 
-    @app.get("/")
-    async def root_handler():
-        return {"status": "alive", "service": "Crypto Alert Bot Webhook"}
+@app.get("/")
+async def root_handler():
+    return {"status": "alive", "service": "Crypto Alert Bot Webhook"}
+
 
 # --- Local Web Server for non-Serverless runs ---
 async def handle_ping(request):
